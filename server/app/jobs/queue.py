@@ -92,3 +92,32 @@ def request_cancel(db: Session, job: Job) -> None:
 def mark(db: Session, job_id: str, **values) -> None:
     db.execute(update(Job).where(Job.id == job_id).values(**values))
     db.commit()
+
+
+def prune_outputs(db: Session, *, older_than: timedelta = timedelta(hours=24)) -> int:
+    """Delete render/package files of jobs that finished more than `older_than` ago. Returns jobs pruned."""
+    from app.services import storage
+
+    cutoff = utcnow() - older_than
+    jobs = db.scalars(select(Job).where(Job.type.in_(("render", "package")), Job.status == "succeeded", Job.finished_at < cutoff)).all()
+    pruned = 0
+    for job in jobs:
+        result = dict(job.result or {})
+        files = result.get("_files") or []
+        if not files:
+            continue
+        for rel in files:
+            try:
+                path = storage.abs_path(rel)
+            except ValueError:
+                continue
+            path.unlink(missing_ok=True)
+            # Remove the now-empty job folder.
+            if path.parent.is_dir() and not any(path.parent.iterdir()):
+                storage.remove_tree(path.parent)
+        result["_files"] = []
+        result["expired"] = True
+        job.result = result
+        pruned += 1
+    db.commit()
+    return pruned

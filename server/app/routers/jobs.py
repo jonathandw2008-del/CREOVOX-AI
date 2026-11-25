@@ -167,6 +167,8 @@ def job_file(job_id: str, index: int, user: User = Depends(current_user), db: Se
     job = _owned_job(db, user, job_id)
     result = job.result if isinstance(job.result, dict) else {}
     files = result.get("_files") or []
+    if job.status == "succeeded" and result.get("expired"):
+        raise _err(410, "expired", "This download has expired. Render it again.")
     if job.status != "succeeded" or index < 0 or index >= len(files):
         raise _err(404, "not_found", "File not found.")
     try:

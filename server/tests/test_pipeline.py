@@ -283,3 +283,44 @@ def test_spread_frames_limits_reuse():
         counts[d["frameIndex"]] = counts.get(d["frameIndex"], 0) + 1
     assert max(counts.values()) <= 2
     assert len(counts) >= 2
+
+
+def test_old_outputs_are_pruned(auth_client, project, db):
+    from datetime import timedelta
+
+    from app.jobs.queue import prune_outputs
+    from app.models import Job
+
+    pid = project["id"]
+    _analyze(auth_client, pid)
+    _with_clips(auth_client, pid)
+    job = auth_client.post(f"/api/projects/{pid}/render", json={"clipIds": ["c1"], "resolution": "480p"}).json()
+    _run(auth_client, job)
+    assert auth_client.get(f"/api/jobs/{job['id']}/files/0").status_code == 200
+
+    assert prune_outputs(db) == 0  # fresh outputs are kept
+    row = db.get(Job, job["id"])
+    row.finished_at = row.finished_at - timedelta(hours=25)
+    db.commit()
+    assert prune_outputs(db) == 1
+    r = auth_client.get(f"/api/jobs/{job['id']}/files/0")
+    assert r.status_code == 410
+    assert r.json()["error"]["code"] == "expired"
+
+
+def test_failed_rerun_restores_ready_status(auth_client, project, monkeypatch):
+    pid = project["id"]
+    _analyze(auth_client, pid)
+
+    def boom(*a, **k):
+        from app.services.transcribe import TranscriptionError
+
+        raise TranscriptionError("down")
+
+    monkeypatch.setattr(handlers, "transcribe", boom)
+    auth_client.post(f"/api/projects/{pid}/analyze", json={})
+    assert auth_client.get(f"/api/projects/{pid}").json()["status"] == "processing"
+    worker.run_once(("analyze",))
+    p = auth_client.get(f"/api/projects/{pid}").json()
+    assert p["status"] == "ready"
+    assert len(p["transcript"]) == 5  # earlier results untouched

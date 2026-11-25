@@ -14,7 +14,7 @@ import time
 from app.db import SessionLocal
 from app.jobs.context import JobCanceled, JobContext, JobError
 from app.jobs.handlers import HANDLERS
-from app.jobs.queue import HEAVY_TYPES, LIGHT_TYPES, claim_next, mark, requeue_stale
+from app.jobs.queue import HEAVY_TYPES, LIGHT_TYPES, claim_next, mark, prune_outputs, requeue_stale
 from app.models import Job, utcnow
 from app.services.ai import AIError, AIUnavailable
 from app.services.ffmpeg import FFmpegError
@@ -25,6 +25,7 @@ log = logging.getLogger("creovox.worker")
 USER_FACING = (JobError, FFmpegError, TranscriptionError, AIError, AIUnavailable)
 POLL_SECONDS = 1.0
 STALE_CHECK_SECONDS = 30.0
+PRUNE_SECONDS = 3600.0  # rendered clips and ZIPs are kept for 24 h
 
 
 def run_job(job: Job) -> None:
@@ -50,6 +51,18 @@ def run_job(job: Job) -> None:
         values = {"status": "failed", "error": "Something went wrong while processing. Please try again."}
     with SessionLocal() as db:
         mark(db, job.id, finished_at=utcnow(), heartbeat_at=utcnow(), **values)
+        if job.type == "analyze" and values["status"] != "succeeded":
+            _restore_status(db, job)
+
+
+def _restore_status(db, job: Job) -> None:
+    """A failed/canceled re-analysis must not leave an already-analysed project stuck in 'processing'."""
+    from app.models import Project
+
+    row = db.get(Project, job.project_id) if job.project_id else None
+    if row is not None and row.status == "processing" and "process" in ((row.doc or {}).get("completedSteps") or []):
+        row.status = "ready"
+        db.commit()
 
 
 def run_once(types: tuple[str, ...]) -> bool:
@@ -64,8 +77,15 @@ def run_once(types: tuple[str, ...]) -> bool:
 
 def _loop(types: tuple[str, ...], stop: threading.Event, *, recover: bool) -> None:
     last_stale = 0.0
+    last_prune = 0.0
     while not stop.is_set():
         try:
+            if recover and time.monotonic() - last_prune > PRUNE_SECONDS:
+                last_prune = time.monotonic()
+                with SessionLocal() as db:
+                    n = prune_outputs(db)
+                if n:
+                    log.info("deleted output files of %d old job(s)", n)
             if recover and time.monotonic() - last_stale > STALE_CHECK_SECONDS:
                 last_stale = time.monotonic()
                 with SessionLocal() as db:
