@@ -7,3 +7,19 @@ dist/
 .vscode/
 .idea/
 *.log
+
+# Backend
+server/.venv/
+server/storage/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Local SQLite dev database
+server/*.db
+
+# Agent tool state
+.swarm/
+.claude-flow/
+server/.swarm/
+server/.claude-flow/

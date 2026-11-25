@@ -17,12 +17,12 @@ interface Tile {
 }
 
 const tiles: Tile[] = [
-  { title: 'Smart video editor', body: 'Trim, split and reframe clips on a touch-friendly timeline. Preview 16:9, 9:16 and 1:1 instantly.', icon: Scissors, visual: <EditorMini />, span: 'md:col-span-4', to: '/studio/editor', tag: 'Renders in-browser' },
-  { title: 'Highlight detection', body: 'Candidate moments scored with real audio energy from your file.', icon: Sparkles, visual: <HighlightsMini />, span: 'md:col-span-2', to: '/studio/highlights' },
-  { title: 'Multilingual subtitles', body: 'Edit, style and export real SRT & VTT files.', icon: Languages, visual: <SubtitlesMini />, span: 'md:col-span-2', to: '/studio/subtitles' },
-  { title: 'Thumbnail studio', body: 'Compose covers from captured video frames. Export pixel-perfect PNGs.', icon: ImagePlus, visual: <ThumbnailsMini />, span: 'md:col-span-2', to: '/studio/thumbnails' },
-  { title: 'Content writer', body: 'Titles, descriptions, captions and hashtags for six platforms.', icon: PenTool, visual: <WriterMini />, span: 'md:col-span-2', to: '/studio/content', tag: 'Simulated AI' },
-  { title: 'Audience personalization', body: 'Repackage one video for students, professionals and everyone else.', icon: Users, visual: <AudienceMini />, span: 'md:col-span-3', to: '/studio/audience', tag: 'Simulated AI' },
+  { title: 'Smart video editor', body: 'Trim, split and reframe clips on a touch-friendly timeline. Preview 16:9, 9:16 and 1:1 instantly.', icon: Scissors, visual: <EditorMini />, span: 'md:col-span-4', to: '/studio/editor', tag: 'ffmpeg rendering' },
+  { title: 'Highlight detection', body: 'AI finds clip-worthy moments in your transcript, weighted by real audio energy.', icon: Sparkles, visual: <HighlightsMini />, span: 'md:col-span-2', to: '/studio/highlights' },
+  { title: 'Multilingual subtitles', body: 'Whisper-timed cues, AI translation, and real SRT & VTT export.', icon: Languages, visual: <SubtitlesMini />, span: 'md:col-span-2', to: '/studio/subtitles' },
+  { title: 'Thumbnail studio', body: 'AI picks your best frames and writes the headline. Export pixel-perfect PNGs.', icon: ImagePlus, visual: <ThumbnailsMini />, span: 'md:col-span-2', to: '/studio/thumbnails' },
+  { title: 'Content writer', body: 'Titles, descriptions, captions and hashtags for six platforms.', icon: PenTool, visual: <WriterMini />, span: 'md:col-span-2', to: '/studio/content', tag: 'AI-powered' },
+  { title: 'Audience personalization', body: 'Repackage one video for students, professionals and everyone else.', icon: Users, visual: <AudienceMini />, span: 'md:col-span-3', to: '/studio/audience', tag: 'AI-powered' },
   { title: 'Export studio', body: 'Clips, subtitles, thumbnails and copy — bundled into real downloads.', icon: Download, visual: <ExportMini />, span: 'md:col-span-3', to: '/studio/export' },
 ]
 

@@ -25,7 +25,7 @@ const columns = [
     links: [
       { label: 'For creators', to: '/#creators' },
       { label: 'FAQ', to: '/#faq' },
-      { label: 'What is simulated?', to: '/#faq' },
+      { label: 'How the AI works', to: '/#faq' },
     ],
   },
 ]
@@ -44,7 +44,7 @@ export default function Footer() {
               </span>
             </Link>
             <p className="max-w-xs text-sm leading-relaxed text-text-secondary">
-              Create beyond <span className="serif-accent text-brand-highlight">imagination.</span> A frontend-only creative studio — your media stays on your device.
+              Create beyond <span className="serif-accent text-brand-highlight">imagination.</span> One long video in, a full content kit out. Your projects stay private to your account.
             </p>
           </div>
           {columns.map((c) => (
@@ -69,8 +69,8 @@ export default function Footer() {
       </div>
 
       <div className="section-padding mx-auto flex max-w-7xl flex-col items-center justify-between gap-2 border-t border-white/[0.06] py-6 text-xs text-text-muted sm:flex-row">
-        <p>© {new Date().getFullYear()} CREOVOX AI. Concept studio — AI features are simulated.</p>
-        <p className="font-mono">No servers · No accounts · Local-first</p>
+        <p>© {new Date().getFullYear()} CREOVOX AI.</p>
+        <p className="font-mono">Whisper · AI · ffmpeg</p>
       </div>
     </footer>
   )

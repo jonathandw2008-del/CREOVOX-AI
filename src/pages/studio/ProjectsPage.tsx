@@ -284,7 +284,7 @@ export default function ProjectsPage() {
         <h3 id="del-title" className="text-center font-heading text-lg font-semibold text-text-primary">
           Delete “{target?.title}”?
         </h3>
-        <p className="mt-2 text-center text-sm text-text-secondary">The project and its locally stored video will be removed from this browser. This can't be undone.</p>
+        <p className="mt-2 text-center text-sm text-text-secondary">The project and its uploaded video will be permanently deleted. This can't be undone.</p>
         <div className="mt-6 flex gap-3">
           <button type="button" className="btn-secondary flex-1" onClick={() => setDeleteId(null)}>
             Cancel

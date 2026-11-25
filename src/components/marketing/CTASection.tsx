@@ -26,7 +26,7 @@ export default function CTASection() {
           Your next hundred posts are already recorded.
         </motion.h2>
         <motion.p initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }} transition={{ delay: 0.2 }} className="mx-auto mt-6 max-w-xl text-text-secondary sm:text-lg">
-          No sign-up. No upload. Open the studio and start shaping your footage in seconds.
+          Sign in with Google or your email, upload a video and get clips, subtitles and copy in minutes.
         </motion.p>
         <motion.div initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: 0.3 }} className="mt-10 flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:items-center">
           <Link to="/studio/upload" className="btn-primary !min-h-[56px] !px-8 text-base">

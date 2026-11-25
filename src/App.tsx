@@ -3,6 +3,8 @@ import { Routes, Route, Navigate, useLocation, useParams, Link } from 'react-rou
 import { Loader } from 'lucide-react'
 import LandingPage from '@/pages/landing/LandingPage'
 import { useAppStore } from '@/store/useAppStore'
+import { onSignedOut, useAuth } from '@/store/useAuth'
+import RequireAuth from '@/components/auth/RequireAuth'
 
 const FeaturesPage = lazy(() => import('@/pages/landing/FeaturesPage'))
 const HowItWorksPage = lazy(() => import('@/pages/landing/HowItWorksPage'))
@@ -19,6 +21,7 @@ const ContentPage = lazy(() => import('@/pages/studio/ContentPage'))
 const AudiencePage = lazy(() => import('@/pages/studio/AudiencePage'))
 const ExportPage = lazy(() => import('@/pages/studio/ExportPage'))
 const ProjectsPage = lazy(() => import('@/pages/studio/ProjectsPage'))
+const SignInPage = lazy(() => import('@/pages/auth/SignInPage'))
 
 const MODULES = ['process', 'transcript', 'highlights', 'editor', 'subtitles', 'thumbnails', 'content', 'audience', 'export'] as const
 
@@ -71,16 +74,36 @@ function ScrollManager() {
   return null
 }
 
+/** Loads the session once and clears the signed-in user's data from memory on sign-out / expiry. */
+function AuthBootstrap() {
+  const init = useAuth((s) => s.init)
+  useEffect(() => {
+    void init()
+    const off = onSignedOut(() => useAppStore.getState().clearUserData())
+    return () => void off()
+  }, [init])
+  return null
+}
+
 export default function App() {
   return (
     <>
+      <AuthBootstrap />
       <ScrollManager />
       <Suspense fallback={<PageLoader />}>
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/features" element={<FeaturesPage />} />
           <Route path="/how-it-works" element={<HowItWorksPage />} />
-          <Route path="/studio" element={<StudioLayout />}>
+          <Route path="/signin" element={<SignInPage />} />
+          <Route
+            path="/studio"
+            element={
+              <RequireAuth>
+                <StudioLayout />
+              </RequireAuth>
+            }
+          >
             <Route index element={<StudioDashboard />} />
             <Route path="upload" element={<UploadPage />} />
             <Route path="projects" element={<ProjectsPage />} />

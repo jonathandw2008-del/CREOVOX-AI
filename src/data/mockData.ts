@@ -135,6 +135,14 @@ export const LANGUAGES = [
   { code: 'ko', name: 'Korean' },
   { code: 'zh', name: 'Chinese' },
   { code: 'ar', name: 'Arabic' },
+  { code: 'te', name: 'Telugu' },
+  { code: 'ml', name: 'Malayalam' },
+  { code: 'kn', name: 'Kannada' },
+  { code: 'bn', name: 'Bengali' },
+  { code: 'mr', name: 'Marathi' },
+  { code: 'it', name: 'Italian' },
+  { code: 'pt', name: 'Portuguese' },
+  { code: 'ru', name: 'Russian' },
 ]
 
 export const PLATFORMS = [

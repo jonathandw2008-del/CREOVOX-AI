@@ -98,14 +98,14 @@ const STATS = [
   { value: 10, label: 'Connected modules', sub: 'One shared project state' },
   { value: 10, label: 'Subtitle languages', sub: 'Real SRT & VTT export' },
   { value: 6, label: 'Platforms', sub: 'Copy tuned for each' },
-  { value: 0, label: 'Servers', sub: 'Everything runs locally', suffix: '' },
+  { value: 3, label: 'Aspect ratios', sub: '16:9 · 9:16 · 1:1 renders', suffix: '' },
 ]
 
 export function StatsSection() {
   return (
     <section className="section-padding relative py-20">
       <div className="pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 select-none text-center font-heading text-[clamp(8rem,30vw,22rem)] font-bold leading-none tracking-[-0.06em] text-white/[0.025]" aria-hidden>
-        local
+        create
       </div>
       <div className="relative mx-auto grid max-w-6xl grid-cols-2 gap-px overflow-hidden rounded-section border border-white/[0.06] bg-white/[0.06] lg:grid-cols-4">
         {STATS.map((s) => (
@@ -128,11 +128,11 @@ export function StatsSection() {
 const FAQS = [
   {
     q: 'Is the AI in CREOVOX real?',
-    a: 'Partly — and we label which parts. Waveform analysis, frame capture, subtitle files, thumbnail rendering and clip rendering genuinely run in your browser. Transcription, highlight labels, translations and written copy are simulated from templates and sample data, marked with a “Simulated AI” badge everywhere they appear.',
+    a: 'Yes. Speech is transcribed with Whisper. A large language model picks highlights, translates subtitles and writes your titles, descriptions, captions and audience versions, and a vision model chooses thumbnail frames. Everything it writes is grounded in your transcript, and every result stays editable. If the server has no AI key configured, highlights fall back to an audio-energy heuristic and copy falls back to templates, and the studio labels them that way.',
   },
-  { q: 'Do my videos get uploaded anywhere?', a: 'No. There is no backend. Your file is read by the browser and stored in IndexedDB on this device so it survives a reload. Project data lives in localStorage.' },
-  { q: 'Can I export real video clips?', a: 'Yes. Export Studio re-encodes each clip in real time with the MediaRecorder API — cropped to 16:9, 9:16 or 1:1, optionally with burned-in subtitles. Output is WebM (and MP4 where the browser supports it).' },
-  { q: 'Do I need an account?', a: 'No sign-up, no login. Open the studio and start creating. Use the project JSON export to move work between browsers.' },
+  { q: 'Where do my videos go?', a: 'To your private CREOVOX workspace. Only your account can open your projects and videos. Audio is sent to the transcription service and transcript text to the AI provider so they can do their work. Deleting a project removes its video from the server.' },
+  { q: 'Can I export real video clips?', a: 'Yes. Export Studio renders each clip on the server with ffmpeg, cropped to 16:9, 9:16 or 1:1 at up to 1080p, optionally with burned-in styled subtitles. Download MP4 or WebM files one by one, or everything as a single ZIP.' },
+  { q: 'Do I need an account?', a: 'Yes, so your projects are saved and private. Sign in with Google or with a one-time code sent to your email. There is no password to remember.' },
   { q: 'Does it work on my phone?', a: 'Yes. The studio is fully responsive with 44px touch targets, a touch-draggable timeline and a bottom action bar. Rendering long clips is best on a desktop browser.' },
 ]
 
@@ -141,7 +141,7 @@ export function FAQSection() {
   return (
     <section id="faq" className="section-padding scroll-mt-24 py-24 md:py-32">
       <div className="mx-auto grid max-w-6xl gap-12 lg:grid-cols-[1fr_1.4fr]">
-        <SectionHeading align="left" eyebrow="FAQ" title={<>Honest answers, <span className="serif-accent text-brand-highlight">no fine print.</span></>} body="CREOVOX is a frontend-only concept studio. Here's exactly what it does — and doesn't — do." />
+        <SectionHeading align="left" eyebrow="FAQ" title={<>Honest answers, <span className="serif-accent text-brand-highlight">no fine print.</span></>} body="Here's exactly what CREOVOX does with your footage, and what it doesn't." />
         <ul className="space-y-3">
           {FAQS.map((f, i) => {
             const isOpen = open === i

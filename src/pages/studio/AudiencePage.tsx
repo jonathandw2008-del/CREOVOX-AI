@@ -1,13 +1,14 @@
 import { useState } from 'react'
 import { GraduationCap, Briefcase, Users, Sparkles, Loader, Copy, Columns3, Rows3, RefreshCw, X, Plus, Download } from 'lucide-react'
 import ProjectShell from '@/components/studio/ProjectShell'
-import { EmptyState, Field, IconButton, Notice, Panel, Segmented, SimBadge } from '@/components/ui'
+import { AIBadge, EmptyState, Field, IconButton, Notice, Panel, Segmented, SimBadge, aiLabel, useAiStatus } from '@/components/ui'
 import { useAppStore } from '@/store/useAppStore'
 import { LANGUAGES, TONES } from '@/data/mockData'
 import { generateAudienceVariation } from '@/lib/generators'
+import { aiApi, aiContext, isAiUnavailable } from '@/lib/api'
 import { toast } from '@/store/useToast'
 import type { AudienceType, AudienceVariation, Project, Tone } from '@/types'
-import { cn, copyToClipboard, downloadText, slugify, sleep } from '@/utils/helpers'
+import { cn, copyToClipboard, downloadText, slugify } from '@/utils/helpers'
 
 export const AUDIENCES = [
   { type: 'student' as AudienceType, icon: GraduationCap, label: 'Students', desc: 'Simple, structured, encouraging', color: 'text-status-info', tone: 'educational' as Tone },
@@ -19,7 +20,7 @@ export function audienceToMarkdown(p: Project) {
   return [
     `# ${p.title} — audience variations`,
     '',
-    '> Simulated personalization. Review before publishing.',
+    '> Audience variations generated with CREOVOX AI. Review before publishing.',
     '',
     ...p.audienceVariations.flatMap((v) => [
       `## ${AUDIENCES.find((a) => a.type === v.audienceType)?.label} · ${v.tone} · ${v.language}`,
@@ -35,6 +36,9 @@ export function audienceToMarkdown(p: Project) {
     ]),
   ].join('\n')
 }
+
+/** Shown once per session when the server has no AI provider configured. */
+let warnedTemplates = false
 
 const copyText = async (t: string, label: string) => {
   const ok = await copyToClipboard(t)
@@ -126,6 +130,9 @@ function Audience({ project }: { project: Project }) {
   const [tone, setTone] = useState<Tone | 'auto'>('auto')
   const [view, setView] = useState<'compare' | 'single'>('compare')
   const [busy, setBusy] = useState<AudienceType | 'all' | null>(null)
+  const ai = useAiStatus()
+  /** Where each audience variation came from in this session. */
+  const [source, setSource] = useState<Partial<Record<AudienceType, 'ai' | 'template'>>>({})
 
   const vars = project.audienceVariations
   const byType = (t: AudienceType) => vars.find((v) => v.audienceType === t)
@@ -135,13 +142,35 @@ function Audience({ project }: { project: Project }) {
 
   const generate = async (t: AudienceType | 'all') => {
     setBusy(t)
-    await sleep(t === 'all' ? 1100 : 600)
     const types = t === 'all' ? AUDIENCES.map((a) => a.type) : [t]
-    const next = types.map((type) => generateAudienceVariation(project, type, toneFor(type), language, (byType(type)?.variant ?? -1) + 1))
-    updateProject(project.id, (p) => ({ audienceVariations: [...p.audienceVariations.filter((x) => !types.includes(x.audienceType)), ...next] }))
+    const variant = Math.max(...types.map((type) => byType(type)?.variant ?? -1)) + 1
+    let next: AudienceVariation[] | null = null
+    let src: 'ai' | 'template' = 'ai'
+    try {
+      const { variations } = await aiApi.audience({ context: aiContext(project), audiences: types.map((type) => ({ audienceType: type, tone: toneFor(type) })), language, variant })
+      next = variations
+        .filter((v) => types.includes(v.audienceType))
+        .map((v) => ({ ...v, id: `aud-${v.audienceType}`, language, tone: v.tone ?? toneFor(v.audienceType), variant }))
+    } catch (e) {
+      if (isAiUnavailable(e)) {
+        if (!warnedTemplates) {
+          warnedTemplates = true
+          toast("AI isn't configured on the server — using templates", 'info')
+        }
+        src = 'template'
+        next = types.map((type) => generateAudienceVariation(project, type, toneFor(type), language, (byType(type)?.variant ?? -1) + 1))
+      } else toast(e instanceof Error ? e.message : 'Generation failed', 'error')
+    }
+    if (next?.length) {
+      const done = next
+      updateProject(project.id, (p) => ({ audienceVariations: [...p.audienceVariations.filter((x) => !done.some((n) => n.audienceType === x.audienceType)), ...done] }))
+      setSource((m) => ({ ...m, ...Object.fromEntries(done.map((v) => [v.audienceType, src])) }))
+      toast(t === 'all' ? `${done.length} audience variations generated` : 'Variation regenerated')
+    }
     setBusy(null)
-    toast(t === 'all' ? '3 audience variations generated' : 'Variation regenerated')
   }
+
+  const usedTemplates = Object.values(source).includes('template')
 
   const ordered = AUDIENCES.map((a) => byType(a.type)).filter(Boolean) as AudienceVariation[]
   const shown = view === 'compare' ? ordered : ordered.filter((v) => v.audienceType === selected)
@@ -209,10 +238,10 @@ function Audience({ project }: { project: Project }) {
         </div>
       </Panel>
 
-      {language !== 'English' && (
+      {language !== 'English' && ai !== undefined && (!ai?.enabled || usedTemplates) && (
         <Notice>
-          <strong className="text-status-info">Translation is simulated.</strong> No translation service is connected, so text stays in English and is tagged {language}. Edit the fields to
-          localise.
+          <strong className="text-status-info">Templates can't translate.</strong> AI isn't configured on the server, so text stays in English and is tagged {language}. Edit the fields to
+          localise, or configure an AI provider for real {language} copy.
         </Notice>
       )}
 
@@ -234,7 +263,15 @@ function Audience({ project }: { project: Project }) {
       )}
 
       <div className="flex items-center gap-2 text-xs text-text-muted">
-        <SimBadge /> Variations come from local templates seeded with your transcript keywords.
+        {ai?.enabled && !usedTemplates ? (
+          <>
+            <AIBadge label={aiLabel(ai)} /> Each variation is written by AI for its audience, tone and language from your transcript and highlights.
+          </>
+        ) : ai === undefined ? null : (
+          <>
+            <SimBadge label="Templates" /> AI isn't configured, so variations come from local templates seeded with your transcript keywords.
+          </>
+        )}
       </div>
     </div>
   )

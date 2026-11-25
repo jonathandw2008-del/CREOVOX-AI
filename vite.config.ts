@@ -9,6 +9,12 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  server: {
+    proxy: {
+      // FastAPI backend (cd server && uv run uvicorn app.main:app --port 8000)
+      '/api': { target: 'http://localhost:8000', changeOrigin: false },
+    },
+  },
   build: {
     rollupOptions: {
       output: {

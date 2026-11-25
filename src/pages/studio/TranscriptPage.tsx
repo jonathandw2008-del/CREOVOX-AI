@@ -2,8 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Search, Download, Copy, Trash2, RefreshCw, Plus, Crosshair, FileText } from 'lucide-react'
 import ProjectShell from '@/components/studio/ProjectShell'
 import VideoStage from '@/components/studio/VideoStage'
-import { EmptyState, IconButton, Notice, Panel, SimBadge } from '@/components/ui'
+import { AIBadge, EmptyState, IconButton, Notice, Panel, SimBadge } from '@/components/ui'
 import { useAppStore } from '@/store/useAppStore'
+import { LANGUAGES } from '@/data/mockData'
 import { useProjectPlayer } from '@/hooks/useProjectPlayer'
 import { segmentsFromTranscript, activeSegmentAt } from '@/lib/subtitles'
 import { toast, copyWithToast } from '@/store/useToast'
@@ -29,6 +30,10 @@ function Transcript({ project }: { project: Project }) {
   const listRef = useRef<HTMLDivElement>(null)
 
   const segments = project.transcript
+  /** The subtitle track that mirrors the transcript is the one in the spoken language. */
+  const lang = project.transcriptLanguage || 'en'
+  const langName = LANGUAGES.find((l) => l.code === lang)?.name ?? lang.toUpperCase()
+  const isSimulated = !!project.isDemo || !project.aiSource?.transcript
   const active = activeSegmentAt(segments, player.time)
 
   const filtered = useMemo(() => {
@@ -43,7 +48,7 @@ function Transcript({ project }: { project: Project }) {
   }, [active?.id, follow, player.playing]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
-   * Updates a transcript line. Text edits also flow into the English subtitle cue with the same
+   * Updates a transcript line. Text edits also flow into the spoken-language subtitle cue with the same
    * timing — unless that cue was edited separately in Subtitle Studio (its text no longer matches).
    */
   const patch = (id: string, upd: Partial<TranscriptSegment>) =>
@@ -52,7 +57,7 @@ function Transcript({ project }: { project: Project }) {
       const transcript = p.transcript.map((s) => (s.id === id ? { ...s, ...upd } : s))
       if (!old || upd.text === undefined) return { transcript }
       const subtitles = p.subtitles.map((t) =>
-        t.languageCode !== 'en'
+        t.languageCode !== lang
           ? t
           : { ...t, segments: t.segments.map((c) => (Math.abs(c.startTime - old.startTime) < 0.05 && Math.abs(c.endTime - old.endTime) < 0.05 && c.text === old.text ? { ...c, text: upd.text! } : c)) }
       )
@@ -70,10 +75,10 @@ function Transcript({ project }: { project: Project }) {
 
   const syncSubtitles = () => {
     updateProject(project.id, (p) => {
-      const others = p.subtitles.filter((t) => t.languageCode !== 'en')
-      return { subtitles: [{ id: 'sub-en', language: 'English', languageCode: 'en', segments: segmentsFromTranscript(p.transcript) }, ...others] }
+      const others = p.subtitles.filter((t) => t.languageCode !== lang)
+      return { subtitles: [{ id: `sub-${lang}`, language: langName, languageCode: lang, segments: segmentsFromTranscript(p.transcript) }, ...others] }
     })
-    toast('English subtitles rebuilt from transcript')
+    toast(`${langName} subtitles rebuilt from transcript`)
   }
 
   const words = useMemo(() => segments.reduce((n, s) => n + s.text.split(/\s+/).filter(Boolean).length, 0), [segments])
@@ -132,10 +137,19 @@ function Transcript({ project }: { project: Project }) {
             </button>
           </div>
         </Panel>
-        <Notice>
-          Transcript text is <strong className="text-status-info">simulated</strong> sample speech timed to your video's length. Edit any line to match what's actually said — changes save
-          automatically and can be pushed to the subtitle track.
-        </Notice>
+        {project.aiSource?.transcript === 'groq-whisper' || project.aiSource?.transcript === 'local-whisper' ? (
+          <Notice>
+            <AIBadge label="Transcribed with Whisper" className="mr-1.5 align-middle" /> Speech was transcribed {project.aiSource.transcript === 'groq-whisper' ? 'by Whisper (Groq)' : 'by a local Whisper model'}
+            {project.transcriptLanguage ? ` in ${langName}` : ''}. Fix any misheard words — changes save automatically and can be pushed to the subtitle track.
+          </Notice>
+        ) : isSimulated ? (
+          <Notice>
+            Transcript text is <strong className="text-status-info">simulated</strong> sample speech timed to your video's length. Edit any line to match what's actually said — changes save
+            automatically and can be pushed to the subtitle track.
+          </Notice>
+        ) : (
+          <Notice>Edit any line to match what's actually said — changes save automatically and can be pushed to the subtitle track.</Notice>
+        )}
       </div>
 
       <Panel className="flex min-h-[60vh] flex-col overflow-hidden !p-0">
@@ -150,7 +164,7 @@ function Transcript({ project }: { project: Project }) {
           <IconButton label="Add line at playhead" onClick={addAtPlayhead}>
             <Plus className="h-4 w-4" />
           </IconButton>
-          <SimBadge />
+          {isSimulated && <SimBadge />}
         </div>
         <p className="px-4 pt-3 text-xs text-text-muted">
           {filtered.length} of {segments.length} segments{query && ` matching “${query}”`}

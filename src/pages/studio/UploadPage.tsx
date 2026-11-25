@@ -4,7 +4,8 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { UploadCloud, File as FileIcon, X, ArrowRight, AlertCircle, HardDrive, Clock, Monitor, Loader, FileJson, Play, ShieldCheck } from 'lucide-react'
 import { useAppStore, blankProject } from '@/store/useAppStore'
 import { formatFileSize, formatDuration, generateId } from '@/utils/helpers'
-import { cacheVideoUrl, captureFrame, readVideoMeta, saveVideoBlob, type VideoMeta } from '@/lib/media'
+import { readVideoMeta, type VideoMeta } from '@/lib/media'
+import { ApiError, projectsApi } from '@/lib/api'
 import { Field, Notice, Panel, RealBadge } from '@/components/ui'
 import { toast } from '@/store/useToast'
 import type { Project } from '@/types'
@@ -21,6 +22,9 @@ export default function UploadPage() {
   const [isDragging, setIsDragging] = useState(false)
   const [stage, setStage] = useState<Stage>('idle')
   const [saveStep, setSaveStep] = useState('')
+  const [uploadPct, setUploadPct] = useState(0)
+  /** False when the browser can't decode the file (e.g. MKV/AVI); the server still reads it with ffprobe. */
+  const [previewable, setPreviewable] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [meta, setMeta] = useState<VideoMeta | null>(null)
   const [objectUrl, setObjectUrl] = useState<string | null>(null)
@@ -28,15 +32,15 @@ export default function UploadPage() {
   const inputRef = useRef<HTMLInputElement>(null)
   const importRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
-  const { addProject, logActivity } = useAppStore()
-  const committed = useRef(false)
+  const { addProject, createProject: createServerProject, replaceProject, deleteProject } = useAppStore()
+  const abortRef = useRef<AbortController | null>(null)
 
-  // Revoke the preview URL unless it was handed to the project cache.
   useEffect(() => {
     return () => {
-      if (objectUrl && !committed.current) URL.revokeObjectURL(objectUrl)
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
   }, [objectUrl])
+  useEffect(() => () => abortRef.current?.abort(), [])
 
   const validate = (f: File): string | null => {
     if (!SUPPORTED.includes(f.type) && !/\.(mp4|webm|mov|avi|mkv|ogv|m4v)$/i.test(f.name)) return 'Unsupported file format. Please choose MP4, WebM, MOV, AVI or MKV.'
@@ -56,14 +60,13 @@ export default function UploadPage() {
     try {
       const m = await readVideoMeta(url)
       setMeta(m)
-      setStage('ready')
-    } catch (e) {
-      setError(e instanceof Error ? `${e.message} Try an MP4 (H.264) or WebM file.` : 'Could not read this video.')
-      URL.revokeObjectURL(url)
-      setObjectUrl(null)
-      setFile(null)
-      setStage('idle')
+      setPreviewable(true)
+    } catch {
+      // The browser can't decode it; the server will probe it and make a playable copy.
+      setMeta({ duration: 0, width: 0, height: 0 } as VideoMeta)
+      setPreviewable(false)
     }
+    setStage('ready')
   }, [])
 
   const reset = () => {
@@ -71,39 +74,46 @@ export default function UploadPage() {
     setFile(null)
     setObjectUrl(null)
     setMeta(null)
+    setPreviewable(true)
     setStage('idle')
     setError(null)
     if (inputRef.current) inputRef.current.value = ''
   }
 
   const createProject = async () => {
-    if (!file || !meta || !objectUrl) return
+    if (!file || !meta) return
     if (!title.trim()) return setError('Give your project a title.')
     setStage('saving')
-    const key = `vid-${generateId()}`
-
-    setSaveStep('Saving video to this browser (IndexedDB)…')
-    const persisted = await saveVideoBlob(key, file)
-
-    setSaveStep('Capturing a poster frame…')
-    const poster = await captureFrame(objectUrl, Math.min(meta.duration * 0.1, 5), 480, 270).catch(() => null)
-
-    committed.current = true
-    cacheVideoUrl(key, file)
-    URL.revokeObjectURL(objectUrl)
-
-    const p: Project = {
-      ...blankProject(title.trim(), description.trim() || `Created from ${file.name}`),
-      status: 'processing',
-      duration: meta.duration,
-      thumbnail: poster ?? undefined,
-      videoFile: { name: file.name, size: file.size, type: file.type || 'video/mp4', duration: meta.duration, width: meta.width, height: meta.height, storageKey: key, persisted },
-      completedSteps: ['upload'],
+    setError(null)
+    setUploadPct(0)
+    let projectId: string | null = null
+    try {
+      setSaveStep('Creating project…')
+      projectId = await createServerProject(title.trim(), description.trim() || `Created from ${file.name}`)
+      setSaveStep('Uploading video…')
+      abortRef.current = new AbortController()
+      const saved = await projectsApi.uploadVideo(
+        projectId,
+        file,
+        meta.duration ? { duration: meta.duration, width: meta.width, height: meta.height } : undefined,
+        (f) => {
+          setUploadPct(f)
+          if (f >= 1) setSaveStep('Reading the video on the server…')
+        },
+        abortRef.current.signal
+      )
+      replaceProject(saved)
+      navigate(`/studio/process/${saved.id}`)
+    } catch (e) {
+      const aborted = e instanceof DOMException && e.name === 'AbortError'
+      // Don't leave an empty project behind when the upload didn't make it.
+      if (projectId) await deleteProject(projectId).catch(() => undefined)
+      setStage('ready')
+      if (aborted) toast('Upload canceled', 'info')
+      else setError(e instanceof ApiError ? e.message : 'Upload failed. Please try again.')
+    } finally {
+      abortRef.current = null
     }
-    addProject(p)
-    logActivity(`Video added to '${p.title}'`, 'create', p.id)
-    if (!persisted) toast('Storage quota reached — the video will play this session only.', 'info')
-    navigate(`/studio/process/${p.id}`)
   }
 
   const importProject = async (f: File) => {
@@ -112,12 +122,12 @@ export default function UploadPage() {
       const raw: Partial<Project> = data.project ?? data
       if (!raw.title || !Array.isArray(raw.transcript)) throw new Error('bad')
       const base = blankProject(raw.title)
-      const p: Project = { ...base, ...raw, id: generateId(), isDemo: false, videoFile: undefined, createdAt: base.createdAt, updatedAt: base.updatedAt }
-      addProject(p)
+      const p: Project = { ...base, ...raw, id: generateId(), isDemo: false, videoFile: undefined, version: undefined, createdAt: base.createdAt, updatedAt: base.updatedAt }
+      const id = await addProject(p)
       toast(`Imported '${p.title}'`)
-      navigate(`/studio/transcript/${p.id}`)
-    } catch {
-      setError('That file is not a CREOVOX project export (.json).')
+      navigate(`/studio/transcript/${id}`)
+    } catch (e) {
+      setError(e instanceof ApiError ? `Import failed: ${e.message}` : 'That file is not a CREOVOX project export (.json).')
     }
   }
 
@@ -128,7 +138,7 @@ export default function UploadPage() {
         <h1 className="mt-2 font-heading text-2xl font-bold text-text-primary sm:text-3xl">
           Bring in your <span className="serif-accent text-brand-highlight">footage</span>
         </h1>
-        <p className="mt-1 text-text-secondary">Your file never leaves this device — it's read and stored locally in your browser.</p>
+        <p className="mt-1 text-text-secondary">Your video is uploaded to your private workspace, then transcribed and analysed on the server.</p>
       </motion.div>
 
       <AnimatePresence mode="wait">
@@ -215,7 +225,7 @@ export default function UploadPage() {
               <Loader className="h-6 w-6 animate-spin text-brand-primary" />
               <div className="min-w-0">
                 <p className="truncate font-medium text-text-primary">{file?.name}</p>
-                <p className="text-sm text-text-muted">Reading video metadata locally…</p>
+                <p className="text-sm text-text-muted">Reading video details…</p>
               </div>
             </Panel>
           </motion.div>
@@ -224,20 +234,28 @@ export default function UploadPage() {
         {(stage === 'ready' || stage === 'saving') && file && meta && objectUrl && (
           <motion.div key="preview" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-4">
             <div className="overflow-hidden rounded-section border border-white/[0.07] bg-black">
-              <video src={objectUrl} controls playsInline className="max-h-[56vh] w-full bg-black object-contain" />
+              {previewable ? (
+                <video src={objectUrl} controls playsInline className="max-h-[56vh] w-full bg-black object-contain" />
+              ) : (
+                <div className="flex aspect-video max-h-[56vh] w-full flex-col items-center justify-center gap-2 px-6 text-center">
+                  <FileIcon className="h-8 w-8 text-text-muted" />
+                  <p className="text-sm text-text-secondary">Your browser can't preview this format.</p>
+                  <p className="text-xs text-text-muted">That's fine: the server converts it to a playable copy after upload.</p>
+                </div>
+              )}
             </div>
 
             <Panel className="p-5">
               <div className="mb-4 flex flex-wrap items-center gap-2">
                 <h2 className="font-heading font-semibold text-text-primary">File details</h2>
-                <RealBadge label="Read locally" />
+                {previewable && <RealBadge label="Read in your browser" />}
               </div>
               <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
                 {[
                   { icon: FileIcon, label: 'File name', value: file.name },
                   { icon: HardDrive, label: 'Size', value: formatFileSize(file.size) },
-                  { icon: Clock, label: 'Duration', value: formatDuration(meta.duration) },
-                  { icon: Monitor, label: 'Resolution', value: meta.width ? `${meta.width}×${meta.height}` : 'Audio only' },
+                  { icon: Clock, label: 'Duration', value: meta.duration ? formatDuration(meta.duration) : 'Read after upload' },
+                  { icon: Monitor, label: 'Resolution', value: meta.width ? `${meta.width}×${meta.height}` : previewable ? 'Audio only' : 'Read after upload' },
                 ].map(({ icon: Icon, label, value }) => (
                   <div key={label} className="min-w-0">
                     <div className="mb-1 flex items-center gap-1.5 text-xs text-text-muted">
@@ -261,9 +279,20 @@ export default function UploadPage() {
             </Panel>
 
             {stage === 'saving' ? (
-              <Panel className="flex items-center gap-3 p-5">
-                <Loader className="h-5 w-5 animate-spin text-brand-primary" />
-                <span className="text-sm text-text-secondary">{saveStep}</span>
+              <Panel className="space-y-3 p-5">
+                <div className="flex items-center gap-3">
+                  <Loader className="h-5 w-5 animate-spin text-brand-primary" />
+                  <span className="flex-1 text-sm text-text-secondary">{saveStep}</span>
+                  <span className="font-mono text-xs text-text-muted">{Math.round(uploadPct * 100)}%</span>
+                  {uploadPct < 1 && (
+                    <button type="button" className="btn-ghost !min-h-[36px] !text-sm" onClick={() => abortRef.current?.abort()}>
+                      Cancel
+                    </button>
+                  )}
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-white/[0.06]" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(uploadPct * 100)} aria-label="Upload progress">
+                  <div className="h-full rounded-full bg-gradient-to-r from-brand-primary to-brand-secondary transition-[width] duration-200" style={{ width: `${uploadPct * 100}%` }} />
+                </div>
               </Panel>
             ) : (
               <div className="flex flex-col gap-3 sm:flex-row">
@@ -293,11 +322,11 @@ export default function UploadPage() {
 
       <Notice>
         <span className="inline-flex items-center gap-1.5 font-medium text-text-primary">
-          <ShieldCheck className="h-4 w-4 text-status-success" /> Frontend-only studio
+          <ShieldCheck className="h-4 w-4 text-status-success" /> Private to your account
         </span>
         <br />
-        There is no server: nothing is uploaded. Playback, waveform analysis, frame capture, subtitle files and clip rendering run in your browser. Transcription and AI writing are
-        simulated with sample data and are labelled as such.
+        Only you can see your uploads. After upload the server transcribes the speech with Whisper, finds highlights, builds subtitles and renders clips with ffmpeg. You can
+        delete a project and its video at any time from the Project Library.
       </Notice>
     </div>
   )
