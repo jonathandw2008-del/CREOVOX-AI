@@ -31,3 +31,7 @@ package = false
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.pyrefly]
+python-interpreter-path = ".venv/bin/python"
+
