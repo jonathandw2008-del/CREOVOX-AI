@@ -44,6 +44,12 @@ export interface Project {
   exportConfig: ExportConfig
   completedSteps: WorkflowStep[]
   exportedAt?: ISODate
+  /** Server document version (optimistic concurrency). Absent for local demo projects. */
+  version?: number
+  /** ISO 639-1 code detected by transcription (e.g. 'en', 'ta'). */
+  transcriptLanguage?: string
+  /** Which engine produced each AI artefact, e.g. { transcript: 'groq-whisper', highlights: 'groq' | 'heuristic' }. */
+  aiSource?: Partial<Record<'transcript' | 'highlights' | 'thumbnails', string>>
 }
 
 export interface VideoFile {
@@ -53,8 +59,10 @@ export interface VideoFile {
   duration: number
   width: number
   height: number
-  /** IndexedDB key of the stored Blob. Shared between duplicated projects. */
+  /** IndexedDB key of the stored Blob (legacy local projects) or the server asset id. */
   storageKey: string
+  /** Server media asset id. When set, the video streams from /api/projects/:id/video. */
+  assetId?: string
   /** False if the browser refused to persist the file (quota/private mode). */
   persisted: boolean
 }

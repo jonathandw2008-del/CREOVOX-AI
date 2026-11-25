@@ -1,0 +1,11 @@
+.venv
+.env
+storage
+tests
+__pycache__
+*.pyc
+.pytest_cache
+.DS_Store
+.swarm
+.claude-flow
+*.db

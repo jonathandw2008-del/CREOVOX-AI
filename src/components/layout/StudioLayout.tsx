@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState, type ElementType } from 'react'
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Upload, FolderOpen, ArrowLeft, Menu, X, Bell, ChevronDown, Check, Plus, HardDrive } from 'lucide-react'
+import { LayoutDashboard, Upload, FolderOpen, ArrowLeft, Menu, X, Bell, ChevronDown, Check, Plus, Cloud } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAppStore } from '@/store/useAppStore'
 import { PROJECT_STEPS } from '@/lib/workflow'
 import { Toaster } from '@/components/ui'
 import Logo from '@/components/layout/Logo'
+import UserMenu from '@/components/auth/UserMenu'
+import { useAuth } from '@/store/useAuth'
 import { cn, formatRelativeTime } from '@/utils/helpers'
 
 interface NavItem {
@@ -60,6 +62,7 @@ function SidebarContent() {
   const location = useLocation()
   const { projects, currentProjectId } = useAppStore()
   const current = projects.find((p) => p.id === currentProjectId) ?? projects[0]
+  const email = useAuth((s) => s.user?.email)
 
   const isActive = (match: string) => (match === '/studio' ? location.pathname === '/studio' : location.pathname.startsWith(match))
 
@@ -111,9 +114,9 @@ function SidebarContent() {
       </nav>
 
       <div className="space-y-2 border-t border-white/[0.06] p-3">
-        <div className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs text-text-muted">
-          <HardDrive className="h-4 w-4" />
-          <span>Local workspace · no account</span>
+        <div className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs text-text-muted" title={email}>
+          <Cloud className="h-4 w-4 flex-shrink-0" />
+          <span className="truncate">Saved to your account{email ? ` · ${email}` : ''}</span>
         </div>
         <Link to="/" className="flex min-h-[44px] items-center gap-3 rounded-xl px-3 text-sm text-text-secondary transition-colors hover:bg-white/[0.04] hover:text-text-primary">
           <ArrowLeft className="h-[18px] w-[18px]" />
@@ -326,6 +329,7 @@ export default function StudioLayout() {
             <Link to="/studio/upload" className="btn-primary hidden !px-4 !text-sm sm:inline-flex">
               <Plus className="h-4 w-4" /> New
             </Link>
+            <UserMenu />
           </div>
         </header>
         <div className="border-b border-white/[0.06] px-3 py-2 sm:hidden">

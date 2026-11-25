@@ -18,9 +18,9 @@ export const STEPS: Step[] = [
   {
     n: '01',
     title: 'Drop in your video',
-    body: 'MP4, WebM or MOV up to 2 GB. CREOVOX reads it locally, captures a poster frame and stores it in your browser — nothing is uploaded.',
+    body: 'MP4, WebM, MOV or MKV up to 2 GB. Your video uploads to your private workspace, where CREOVOX reads it and captures a poster frame.',
     icon: Upload,
-    bullets: ['Drag & drop or browse', 'Instant metadata & preview', 'Survives page reloads'],
+    bullets: ['Drag & drop or browse', 'Upload progress & preview', 'Saved to your account'],
     visual: (
       <div className="glass-inset flex aspect-[16/10] flex-col items-center justify-center gap-3 border-dashed p-6 text-center">
         <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-primary/15 shadow-[0_0_40px_-8px_rgba(255,91,22,0.9)]">
@@ -36,9 +36,9 @@ export const STEPS: Step[] = [
   {
     n: '02',
     title: 'Analyse the footage',
-    body: 'The real audio waveform is decoded on-device and used to score highlight candidates. A simulated transcript gives you an editable starting point.',
+    body: 'Whisper transcribes the speech and detects the language. AI then finds the strongest moments, weighted by the real audio energy, and a subtitle track is built from the word timings.',
     icon: Cpu,
-    bullets: ['Real Web Audio waveform', 'Simulated transcript & labels', 'Editable timestamps'],
+    bullets: ['Whisper transcription', 'AI highlight detection', 'Editable timestamps'],
     visual: (
       <div className="space-y-3">
         <HighlightsMini />
@@ -49,7 +49,7 @@ export const STEPS: Step[] = [
   {
     n: '03',
     title: 'Shape every asset',
-    body: 'Trim clips for each aspect ratio, style multilingual subtitles, design thumbnails from real frames and generate platform copy.',
+    body: 'Trim clips for each aspect ratio, translate and style subtitles, design thumbnails from AI-picked frames and generate platform copy.',
     icon: Wand2,
     bullets: ['Touch-friendly timeline', 'Subtitle styling & import', 'Content for six platforms'],
     visual: (
@@ -62,9 +62,9 @@ export const STEPS: Step[] = [
   {
     n: '04',
     title: 'Export & publish',
-    body: 'Render real clips with MediaRecorder, then download SRT/VTT, PNG thumbnails, Markdown copy and a re-importable project file.',
+    body: 'The server renders your clips with ffmpeg, then packages SRT/VTT, PNG thumbnails, Markdown copy and a re-importable project file into one ZIP.',
     icon: Download,
-    bullets: ['WebM / MP4 clip rendering', 'Burned-in subtitles', 'One-click content package'],
+    bullets: ['MP4 / WebM clip rendering', 'Burned-in subtitles', 'One-click ZIP package'],
     visual: <ExportMini />,
   },
 ]

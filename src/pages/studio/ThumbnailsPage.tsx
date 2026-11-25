@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { Download, Plus, Copy, Trash2, Camera, ImagePlus, X, Star, RotateCcw, Loader } from 'lucide-react'
+import { Download, Plus, Copy, Trash2, Camera, ImagePlus, X, Star, RotateCcw, Loader, Sparkles } from 'lucide-react'
 import ProjectShell from '@/components/studio/ProjectShell'
-import { Field, IconButton, Notice, Panel, RealBadge, Segmented } from '@/components/ui'
-import { useAppStore } from '@/store/useAppStore'
+import { AIBadge, Field, IconButton, Notice, Panel, RealBadge, Segmented } from '@/components/ui'
+import { useAppStore, isServerProject } from '@/store/useAppStore'
+import { jobsApi, pollJob } from '@/lib/api'
 import { useProjectVideo } from '@/hooks/useProjectVideo'
 import { drawThumbnail, loadImage, renderThumbnailBlob, THUMB_H, THUMB_W } from '@/lib/thumbnail'
 import { captureFrameFromElement } from '@/lib/media'
@@ -56,7 +57,11 @@ async function imageFileToDataUrl(file: File): Promise<string> {
 
 function Thumbnails({ project }: { project: Project }) {
   const updateProject = useAppStore((s) => s.updateProject)
+  const flushProject = useAppStore((s) => s.flushProject)
   const video = useProjectVideo(project)
+  const canSuggest = isServerProject(project) && !!project.videoFile?.assetId
+  /** Progress (0–1) of a running "AI suggest" job, or null. */
+  const [suggesting, setSuggesting] = useState<number | null>(null)
   const designs = project.thumbnails.length ? project.thumbnails : defaultThumbnails(project.title)
   const activeId = designs.some((d) => d.id === project.activeThumbnailId) ? project.activeThumbnailId! : designs[0].id
   const active = designs.find((d) => d.id === activeId)!
@@ -96,6 +101,23 @@ function Thumbnails({ project }: { project: Project }) {
   const resetToTemplate = () => {
     const tpl = defaultThumbnails(project.title).find((t) => t.style === active.style) ?? defaultThumbnails(project.title)[0]
     update({ ...tpl, id: active.id, title: active.title, backgroundImage: active.backgroundImage })
+  }
+
+  const suggest = async () => {
+    setSuggesting(0)
+    try {
+      await flushProject(project.id)
+      const job = await jobsApi.thumbnails(project.id)
+      const done = await pollJob<{ designs: ThumbnailDesign[]; ai: boolean }>(job.id, (j) => setSuggesting(j.progress))
+      const fresh = (done.result?.designs ?? []).map((d) => ({ ...d, id: d.id || generateId() }))
+      if (!fresh.length) return toast('No frames could be extracted from this video', 'error')
+      updateProject(project.id, (p) => ({ thumbnails: [...fresh, ...(p.thumbnails.length ? p.thumbnails : designs)], activeThumbnailId: fresh[0].id }))
+      toast(done.result?.ai ? `${fresh.length} AI thumbnail ideas added` : `${fresh.length} frame-based designs added (AI not configured, so headlines use your title)`)
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Thumbnail suggestions failed', 'error')
+    } finally {
+      setSuggesting(null)
+    }
   }
 
   const captureFrame = () => {
@@ -162,6 +184,12 @@ function Thumbnails({ project }: { project: Project }) {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {canSuggest && (
+            <button type="button" className="btn-secondary !px-4 !text-sm" onClick={suggest} disabled={suggesting !== null} title="Pick strong frames from your highlights and write headlines">
+              {suggesting !== null ? <Loader className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4 text-brand-highlight" />}
+              {suggesting !== null ? `Suggesting… ${Math.round(suggesting * 100)}%` : 'AI suggest'}
+            </button>
+          )}
           <button type="button" className="btn-primary !px-4 !text-sm" onClick={() => void downloadPng(active).then(() => toast('PNG downloaded'))}>
             <Download className="h-4 w-4" /> Download PNG
           </button>
@@ -188,7 +216,8 @@ function Thumbnails({ project }: { project: Project }) {
         <Panel className="p-5">
           <div className="mb-4 flex flex-wrap items-center gap-2">
             <h3 className="font-heading font-semibold text-text-primary">Background image</h3>
-            <RealBadge label="Captured locally" />
+            <RealBadge label="Real video frames" />
+            {canSuggest && <AIBadge label="AI frame picks" />}
           </div>
           {video.url ? (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-[220px_1fr] sm:items-center">
@@ -218,7 +247,16 @@ function Thumbnails({ project }: { project: Project }) {
             </div>
           ) : (
             <div className="flex flex-wrap items-center gap-3">
-              <p className="flex-1 text-sm text-text-muted">{project.videoFile ? 'Source video is not stored in this browser.' : 'This demo project has no video to capture frames from.'} You can upload an image instead.</p>
+              <p className="flex-1 text-sm text-text-muted">
+                {project.isDemo
+                  ? 'This demo project has no video to capture frames from.'
+                  : project.videoFile
+                    ? video.status === 'loading'
+                      ? 'Loading the source video…'
+                      : 'The source video is not available right now.'
+                    : 'This project has no video yet.'}{' '}
+                You can upload an image instead.
+              </p>
               <button type="button" className="btn-secondary !px-4 !text-sm" onClick={() => imageRef.current?.click()}>
                 <ImagePlus className="h-4 w-4" /> Upload image
               </button>
@@ -329,7 +367,10 @@ function Thumbnails({ project }: { project: Project }) {
             </div>
           </div>
         </div>
-        <Notice>Thumbnails are composed on a canvas in your browser — the PNG you download matches the preview pixel for pixel. No image-generation AI is used.</Notice>
+        <Notice>
+          Thumbnails are composed on a canvas — the PNG you download matches the preview pixel for pixel. {canSuggest ? 'AI suggest picks strong frames from your highlights and writes the headline; ' : ''}No
+          image-generation AI is used, so every background is a real frame or your own image.
+        </Notice>
       </Panel>
     </div>
   )

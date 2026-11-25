@@ -18,7 +18,7 @@ export default function HowItWorksPage() {
           <div className="grid-fade pointer-events-none absolute inset-0" aria-hidden />
           <div className="ambient-orb left-1/2 top-0 h-[420px] w-[min(800px,120vw)] -translate-x-1/2 opacity-60" aria-hidden />
           <div className="relative">
-            <SectionHeading eyebrow="How it works" title={<>From upload to export, <span className="serif-accent text-brand-highlight">in one flow.</span></>} body="Ten connected steps share a single project. Jump between them at any time — your work is saved locally as you go." />
+            <SectionHeading eyebrow="How it works" title={<>From upload to export, <span className="serif-accent text-brand-highlight">in one flow.</span></>} body="Ten connected steps share a single project. Jump between them at any time. Your work saves to your account as you go." />
           </div>
 
           {/* Pipeline map */}

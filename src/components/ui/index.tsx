@@ -1,8 +1,9 @@
-import { useEffect, useRef, type ReactNode, type ButtonHTMLAttributes, type ElementType } from 'react'
+import { useEffect, useRef, useState, type ReactNode, type ButtonHTMLAttributes, type ElementType } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { CheckCircle2, AlertCircle, Info, X, FlaskConical } from 'lucide-react'
+import { CheckCircle2, AlertCircle, Info, X, FlaskConical, Sparkles } from 'lucide-react'
 import { useToast } from '@/store/useToast'
 import { cn } from '@/utils/helpers'
+import { aiApi, type AIStatus } from '@/lib/api'
 
 /* ------------------------------- Panel ------------------------------ */
 
@@ -72,13 +73,50 @@ export function SimBadge({ className, label = 'Simulated AI' }: { className?: st
   )
 }
 
-export function RealBadge({ className, label = 'Runs in your browser' }: { className?: string; label?: string }) {
+export function RealBadge({ className, label = 'Real processing' }: { className?: string; label?: string }) {
   return (
     <span className={cn('inline-flex items-center gap-1 rounded-full border border-status-success/30 bg-status-success/10 px-2.5 py-1 text-[11px] font-medium text-status-success', className)}>
       <CheckCircle2 className="h-3 w-3" /> {label}
     </span>
   )
 }
+
+export function AIBadge({ className, label = 'AI-powered' }: { className?: string; label?: string }) {
+  return (
+    <span className={cn('inline-flex items-center gap-1 rounded-full border border-brand-primary/30 bg-brand-primary/10 px-2.5 py-1 text-[11px] font-medium text-brand-highlight', className)}>
+      <Sparkles className="h-3 w-3" /> {label}
+    </span>
+  )
+}
+
+/* ------------------------------ AI status ----------------------------- */
+
+let aiStatusCache: AIStatus | null | undefined
+let aiStatusPromise: Promise<AIStatus | null> | null = null
+
+/**
+ * Whether the backend has an AI provider configured (fetched once per session).
+ * `undefined` while loading, `null` if the status could not be read.
+ */
+export function useAiStatus(): AIStatus | null | undefined {
+  const [status, setStatus] = useState<AIStatus | null | undefined>(aiStatusCache)
+  useEffect(() => {
+    if (aiStatusCache !== undefined) return
+    let alive = true
+    aiStatusPromise ??= aiApi.status().catch(() => null)
+    aiStatusPromise.then((r) => {
+      aiStatusCache = r
+      if (alive) setStatus(r)
+    })
+    return () => {
+      alive = false
+    }
+  }, [])
+  return status
+}
+
+/** "AI · groq" style label for the configured provider. */
+export const aiLabel = (s: AIStatus | null | undefined, prefix = 'AI') => (s?.provider ? `${prefix} · ${s.provider}` : prefix)
 
 export function Notice({ children, tone = 'info', className }: { children: ReactNode; tone?: 'info' | 'warn'; className?: string }) {
   return (

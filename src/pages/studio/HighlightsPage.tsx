@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Check, Play, Sparkles, Plus, Trash2, ListFilter } from 'lucide-react'
 import ProjectShell from '@/components/studio/ProjectShell'
 import VideoStage from '@/components/studio/VideoStage'
-import { EmptyState, IconButton, Notice, Panel, RealBadge, SimBadge, Segmented } from '@/components/ui'
+import { AIBadge, EmptyState, IconButton, Notice, Panel, RealBadge, SimBadge, Segmented } from '@/components/ui'
 import { useAppStore } from '@/store/useAppStore'
 import { useProjectPlayer } from '@/hooks/useProjectPlayer'
 import { syntheticWaveform } from '@/lib/media'
@@ -212,10 +212,22 @@ function Highlights({ project }: { project: Project }) {
         ))}
       </div>
 
-      <Notice>
-        Highlight titles and categories are <strong className="text-status-info">simulated</strong>.{' '}
-        {project.waveformIsReal ? 'Confidence scores are weighted by the real loudness of your audio track.' : 'Confidence scores are sample values for this demo project.'}
-      </Notice>
+      {project.aiSource?.highlights === 'groq' || project.aiSource?.highlights === 'anthropic' ? (
+        <Notice>
+          <AIBadge label="AI-detected highlights" className="mr-1.5 align-middle" /> Titles, categories and scores were chosen by AI ({project.aiSource.highlights}) from your transcript
+          {project.waveformIsReal ? ', weighted by the real loudness of your audio track' : ''}. Review them before cutting clips.
+        </Notice>
+      ) : project.aiSource?.highlights === 'heuristic' ? (
+        <Notice>
+          <RealBadge label="Detected from audio energy & speech" className="mr-1.5 align-middle" /> These highlights come from loudness peaks, speech density and sentence boundaries in your real
+          audio and transcript (AI highlight detection was not available). Rename or re-categorise them freely.
+        </Notice>
+      ) : (
+        <Notice>
+          Highlight titles and categories are <strong className="text-status-info">simulated</strong>.{' '}
+          {project.waveformIsReal ? 'Confidence scores are weighted by the real loudness of your audio track.' : 'Confidence scores are sample values for this demo project.'}
+        </Notice>
+      )}
     </div>
   )
 }

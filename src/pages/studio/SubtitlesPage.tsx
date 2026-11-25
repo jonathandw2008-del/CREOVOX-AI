@@ -1,16 +1,17 @@
 import { useMemo, useRef, useState } from 'react'
-import { Search, Plus, Download, Copy, Upload, Trash2, Languages, Play, X } from 'lucide-react'
+import { Search, Plus, Download, Copy, Upload, Trash2, Languages, Play, X, Loader } from 'lucide-react'
 import ProjectShell from '@/components/studio/ProjectShell'
 import VideoStage from '@/components/studio/VideoStage'
 import TimeInput from '@/components/studio/TimeInput'
-import { EmptyState, Field, IconButton, Modal, Notice, Panel, RealBadge, Segmented, SimBadge } from '@/components/ui'
-import { useAppStore, DEFAULT_SUBTITLE_STYLE } from '@/store/useAppStore'
+import { AIBadge, EmptyState, Field, IconButton, Modal, Notice, Panel, RealBadge, Segmented, SimBadge, aiLabel, useAiStatus } from '@/components/ui'
+import { useAppStore, DEFAULT_SUBTITLE_STYLE, isServerProject } from '@/store/useAppStore'
+import { ApiError, isAiUnavailable, jobsApi, pollJob } from '@/lib/api'
 import { useProjectPlayer } from '@/hooks/useProjectPlayer'
 import { LANGUAGES } from '@/data/mockData'
 import { buildSRT, buildVTT, parseSubtitleFile, activeSegmentAt } from '@/lib/subtitles'
 import { toast, copyWithToast } from '@/store/useToast'
 import type { Project, SubtitleSegment, SubtitleStyle, SubtitleTrack } from '@/types'
-import { cn, copyToClipboard, downloadText, generateId, slugify } from '@/utils/helpers'
+import { cn, downloadText, generateId, slugify } from '@/utils/helpers'
 
 const TEXT_COLORS = ['#FFFFFF', '#FFE45C', '#FFA45E', '#34D399', '#60A5FA', '#FF5B16']
 const BG_PRESETS = [
@@ -24,7 +25,14 @@ const FONTS = ['Inter', 'Space Grotesk', 'Instrument Serif', 'monospace']
 function Subtitles({ project }: { project: Project }) {
   const updateProject = useAppStore((s) => s.updateProject)
   const { video, player } = useProjectPlayer(project)
-  const [lang, setLang] = useState(project.subtitles[0]?.languageCode ?? 'en')
+  /** Spoken language of the video: the source track that other languages are translated from. */
+  const sourceCode = project.transcriptLanguage ?? project.subtitles.find((t) => !t.simulated)?.languageCode ?? project.subtitles[0]?.languageCode ?? 'en'
+  const sourceName = LANGUAGES.find((l) => l.code === sourceCode)?.name ?? (sourceCode === 'en' ? 'English' : sourceCode.toUpperCase())
+  const [lang, setLang] = useState(project.subtitles[0]?.languageCode ?? sourceCode)
+  const ai = useAiStatus()
+  const [translating, setTranslating] = useState<{ code: string; name: string; progress: number; jobId?: string } | null>(null)
+  /** Track ids translated by AI in this session (for labelling). */
+  const [aiTracks, setAiTracks] = useState<Set<string>>(() => new Set())
   const [query, setQuery] = useState('')
   const [addOpen, setAddOpen] = useState(false)
   const [newLang, setNewLang] = useState('')
@@ -47,33 +55,73 @@ function Subtitles({ project }: { project: Project }) {
     const start = Math.round(player.time * 10) / 10
     const seg: SubtitleSegment = { id: generateId(), startTime: start, endTime: Math.min(project.duration, start + 2.5), text: 'New subtitle' }
     if (!track) {
-      updateProject(project.id, { subtitles: [{ id: 'sub-en', language: 'English', languageCode: 'en', segments: [seg] }] })
-      setLang('en')
+      updateProject(project.id, { subtitles: [{ id: `sub-${sourceCode}`, language: sourceName, languageCode: sourceCode, segments: [seg] }] })
+      setLang(sourceCode)
     } else setTrack((t) => ({ ...t, segments: [...t.segments, seg] }))
   }
 
-  const addLanguage = () => {
-    const l = LANGUAGES.find((x) => x.code === newLang)
-    if (!l) return
-    const source = tracks.find((t) => t.languageCode === 'en') ?? tracks[0]
-    const nt: SubtitleTrack = {
+  const addTrack = (nt: SubtitleTrack) => {
+    updateProject(project.id, (p) => ({ subtitles: [...p.subtitles.filter((t) => t.languageCode !== nt.languageCode), nt] }))
+    setLang(nt.languageCode)
+  }
+
+  /** Fallback when no AI is configured: copy the source timing + text for manual translation. */
+  const addPlaceholderTrack = (l: { code: string; name: string }, source: SubtitleTrack | undefined) => {
+    addTrack({
       id: `sub-${l.code}-${generateId().slice(0, 4)}`,
       language: l.name,
       languageCode: l.code,
       simulated: true,
       segments: (source?.segments ?? []).map((s) => ({ ...s, id: generateId() })),
-    }
-    updateProject(project.id, (p) => ({ subtitles: [...p.subtitles, nt] }))
-    setLang(l.code)
+    })
+    toast(`${l.name} track added — AI isn't configured, so the text needs translating`, 'info')
+  }
+
+  const addLanguage = async () => {
+    const l = LANGUAGES.find((x) => x.code === newLang)
+    if (!l) return
+    const source = tracks.find((t) => t.languageCode === sourceCode) ?? tracks.find((t) => !t.simulated) ?? tracks[0]
     setAddOpen(false)
     setNewLang('')
-    toast(`${l.name} track added — placeholder text needs translating`, 'info')
+    if (!source?.segments.length) {
+      addTrack({ id: `sub-${l.code}-${generateId().slice(0, 4)}`, language: l.name, languageCode: l.code, simulated: false, segments: [] })
+      toast(`${l.name} track added`)
+      return
+    }
+    if (ai && !ai.enabled) return addPlaceholderTrack(l, source)
+
+    setTranslating({ code: l.code, name: l.name, progress: 0 })
+    try {
+      const job = await jobsApi.translate({
+        projectId: isServerProject(project) ? project.id : null,
+        segments: source.segments,
+        sourceLanguage: source.languageCode,
+        targetLanguage: l.code,
+        targetLanguageName: l.name,
+      })
+      setTranslating((t) => t && { ...t, jobId: job.id })
+      const done = await pollJob<{ segments: SubtitleSegment[] }>(job.id, (j) => setTranslating((t) => t && { ...t, progress: j.progress }))
+      const id = `sub-${l.code}-${generateId().slice(0, 4)}`
+      addTrack({ id, language: l.name, languageCode: l.code, simulated: false, segments: done.result?.segments ?? [] })
+      setAiTracks((s) => new Set(s).add(id))
+      toast(`${l.name} subtitles translated`)
+    } catch (e) {
+      if (isAiUnavailable(e)) addPlaceholderTrack(l, source)
+      else if (e instanceof ApiError && e.code === 'job_canceled') toast('Translation canceled', 'info')
+      else toast(e instanceof Error ? e.message : 'Translation failed', 'error')
+    } finally {
+      setTranslating(null)
+    }
+  }
+
+  const cancelTranslation = () => {
+    if (translating?.jobId) void jobsApi.cancel(translating.jobId).catch(() => undefined)
   }
 
   const deleteTrack = () => {
     if (!track) return
     updateProject(project.id, (p) => ({ subtitles: p.subtitles.filter((t) => t.id !== track.id) }))
-    setLang(tracks.find((t) => t.id !== track.id)?.languageCode ?? 'en')
+    setLang(tracks.find((t) => t.id !== track.id)?.languageCode ?? sourceCode)
     setDeleteOpen(false)
     toast(`${track.language} track removed`)
   }
@@ -82,15 +130,15 @@ function Subtitles({ project }: { project: Project }) {
     try {
       const parsed = parseSubtitleFile(await f.text())
       if (track) setTrack((t) => ({ ...t, segments: parsed, simulated: false }))
-      else updateProject(project.id, { subtitles: [{ id: 'sub-en', language: 'English', languageCode: 'en', segments: parsed }] })
+      else updateProject(project.id, { subtitles: [{ id: `sub-${sourceCode}`, language: sourceName, languageCode: sourceCode, segments: parsed }] })
       toast(`Imported ${parsed.length} cues from ${f.name}`)
     } catch (e) {
       toast(e instanceof Error ? e.message : 'Import failed', 'error')
     }
   }
 
-  const base = `${slugify(project.title)}-${track?.languageCode ?? 'en'}`
-  const available = LANGUAGES.filter((l) => !tracks.some((t) => t.languageCode === l.code))
+  const base = `${slugify(project.title)}-${track?.languageCode ?? sourceCode}`
+  const available = LANGUAGES.filter((l) => !tracks.some((t) => t.languageCode === l.code) && l.code !== translating?.code)
 
   return (
     <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_400px]">
@@ -108,16 +156,37 @@ function Subtitles({ project }: { project: Project }) {
               ))}
             </div>
           </div>
-          <button type="button" aria-label="Add language" className="btn-secondary !px-3.5 !text-sm" onClick={() => setAddOpen(true)} disabled={!available.length}>
+          <button type="button" aria-label="Add language" className="btn-secondary !px-3.5 !text-sm" onClick={() => setAddOpen(true)} disabled={!available.length || !!translating}>
             <Languages className="h-4 w-4" /> <span className="hidden sm:inline">Add language</span>
           </button>
         </div>
 
+        {translating && (
+          <Panel className="flex flex-wrap items-center gap-3 p-4" role="status" aria-live="polite">
+            <Loader className="h-4 w-4 animate-spin text-brand-primary" />
+            <span className="text-sm text-text-primary">
+              Translating {translating.name} subtitles from {sourceName}…
+            </span>
+            <span className="font-mono text-xs text-text-muted">{Math.round(translating.progress * 100)}%</span>
+            <div className="h-1.5 min-w-[120px] flex-1 overflow-hidden rounded-full bg-white/[0.06]">
+              <div className="h-full rounded-full bg-gradient-to-r from-brand-primary to-brand-secondary transition-[width] duration-300" style={{ width: `${Math.max(4, translating.progress * 100)}%` }} />
+            </div>
+            <button type="button" className="btn-ghost !min-h-[36px] !text-xs" onClick={cancelTranslation} disabled={!translating.jobId}>
+              Cancel
+            </button>
+          </Panel>
+        )}
+
         {track?.simulated && (
           <Notice>
-            <strong className="text-status-info">Simulated translation.</strong> No translation service is connected — this {track.language} track contains placeholder text with the source timing.
-            Edit each line, or import a translated SRT/VTT file.
+            <strong className="text-status-info">Not translated yet.</strong> AI translation wasn't available when this {track.language} track was added, so it holds the {sourceName} text with the
+            original timing. Edit each line, import a translated SRT/VTT file, or delete the track and add it again once AI is configured.
           </Notice>
+        )}
+        {track && aiTracks.has(track.id) && (
+          <div className="flex items-center gap-2 text-xs text-text-muted">
+            <AIBadge label="AI translated" /> Review the lines — timing is kept from the {sourceName} track.
+          </div>
         )}
 
         <Panel className="!p-0">
@@ -132,7 +201,7 @@ function Subtitles({ project }: { project: Project }) {
             <IconButton label="Import SRT or VTT" onClick={() => importRef.current?.click()}>
               <Upload className="h-4 w-4" />
             </IconButton>
-            {track && track.languageCode !== 'en' && (
+            {track && track.languageCode !== sourceCode && (
               <IconButton label={`Delete ${track.language} track`} className="hover:!text-status-error" onClick={() => setDeleteOpen(true)}>
                 <Trash2 className="h-4 w-4" />
               </IconButton>
@@ -254,7 +323,8 @@ function Subtitles({ project }: { project: Project }) {
           <p className="text-xs text-text-muted">This style is used for burned-in subtitles when rendering clips in Export Studio.</p>
         </Panel>
         <div className="flex items-center gap-2 text-xs text-text-muted">
-          <SimBadge label="Translations simulated" /> <span>Timing, editing & file export are real.</span>
+          {ai?.enabled ? <AIBadge label={aiLabel(ai, 'AI translation')} /> : ai === undefined ? null : <SimBadge label="AI translation off" />}
+          <span>Timing, editing & file export are real.</span>
         </div>
       </div>
 
@@ -267,7 +337,11 @@ function Subtitles({ project }: { project: Project }) {
             <X className="h-4 w-4" />
           </IconButton>
         </div>
-        <p className="mt-2 text-sm text-text-secondary">A new track is created with the English timing and placeholder text (simulated translation).</p>
+        <p className="mt-2 text-sm text-text-secondary">
+          {ai?.enabled
+            ? `AI translates every line from ${sourceName} and keeps the original timing.`
+            : `AI isn't configured, so the new track starts with the ${sourceName} text and timing for you to translate.`}
+        </p>
         <select className="select mt-4" value={newLang} onChange={(e) => setNewLang(e.target.value)} aria-label="Language">
           <option value="">Choose a language…</option>
           {available.map((l) => (

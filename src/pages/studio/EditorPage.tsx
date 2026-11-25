@@ -422,7 +422,11 @@ function Editor({ project }: { project: Project }) {
         <Notice>
           {video.status === 'missing'
             ? 'The source video for this project is not stored in this browser, so the editor uses a simulated preview. Timeline edits still work and are saved.'
-            : 'This demo project has no source video, so playback is simulated. Upload your own video to edit real footage — clip rendering then happens in your browser.'}
+            : project.isDemo
+              ? 'This demo project has no source video, so playback is simulated. Upload your own video to edit real footage and render real clips in Export Studio.'
+              : video.status === 'loading'
+                ? 'Loading the source video…'
+                : 'The source video is not available right now, so playback is simulated. Timeline edits still work and are saved.'}
         </Notice>
       )}
     </div>

@@ -3,6 +3,8 @@ import { Link, NavLink, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Menu, X, ArrowRight } from 'lucide-react'
 import Logo from './Logo'
+import UserMenu from '@/components/auth/UserMenu'
+import { useAuth } from '@/store/useAuth'
 import { cn } from '@/utils/helpers'
 
 const links = [
@@ -16,6 +18,7 @@ export default function Navbar() {
   const [open, setOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
   const location = useLocation()
+  const authStatus = useAuth((s) => s.status)
 
   useEffect(() => setOpen(false), [location.pathname, location.hash])
 
@@ -48,21 +51,21 @@ export default function Navbar() {
       <nav
         aria-label="Main"
         className={cn(
-          'glass-nav mx-auto flex h-14 max-w-6xl items-center justify-between rounded-2xl border px-2 pl-3 transition-all duration-500 sm:h-16 sm:pl-4',
+          'glass-nav mx-auto flex h-14 max-w-6xl items-center justify-between rounded-2xl border px-2 pl-3 transition-all duration-500 sm:h-16 sm:pl-4 xl:h-[4.25rem] xl:max-w-7xl xl:px-3 xl:pl-5 2xl:max-w-[88rem]',
           scrolled ? 'border-white/10 shadow-[0_20px_40px_-20px_rgba(0,0,0,0.8)]' : 'border-white/[0.05] bg-transparent'
         )}
       >
         <Logo />
 
-        <ul className="hidden items-center gap-1 md:flex">
+        <ul className="hidden items-center gap-1 md:flex xl:gap-2">
           {links.map((l) => (
             <li key={l.to}>
               {l.to.includes('#') ? (
-                <Link to={l.to} onClick={onHashLink(l.to)} className="inline-flex min-h-[44px] items-center rounded-xl px-3.5 text-sm text-text-secondary transition-colors hover:text-text-primary">
+                <Link to={l.to} onClick={onHashLink(l.to)} className="inline-flex min-h-[44px] items-center rounded-xl px-3.5 text-sm text-text-secondary transition-colors hover:text-text-primary xl:text-[15px]">
                   {l.label}
                 </Link>
               ) : (
-                <NavLink to={l.to} className={({ isActive }) => cn('inline-flex min-h-[44px] items-center rounded-xl px-3.5 text-sm transition-colors', isActive ? 'text-text-primary' : 'text-text-secondary hover:text-text-primary')}>
+                <NavLink to={l.to} className={({ isActive }) => cn('inline-flex min-h-[44px] items-center rounded-xl px-3.5 text-sm transition-colors xl:text-[15px]', isActive ? 'text-text-primary' : 'text-text-secondary hover:text-text-primary')}>
                   {({ isActive }) => (
                     <span className="relative">
                       {l.label}
@@ -76,9 +79,15 @@ export default function Navbar() {
         </ul>
 
         <div className="flex items-center gap-1">
-          <Link to="/studio" className="btn-primary hidden !min-h-[40px] !px-4 !text-sm md:inline-flex">
+          {authStatus === 'guest' && (
+            <Link to="/signin" className="hidden min-h-[44px] items-center rounded-xl px-3.5 text-sm text-text-secondary transition-colors hover:text-text-primary md:inline-flex xl:text-[15px]">
+              Sign in
+            </Link>
+          )}
+          <Link to="/studio" className="btn-primary hidden !min-h-[40px] !px-4 !text-sm md:inline-flex xl:!min-h-[44px] xl:!px-5 xl:!text-[15px]">
             Open Studio <ArrowRight className="h-4 w-4" />
           </Link>
+          {authStatus === 'authed' && <UserMenu showStudioLinks />}
           <button type="button" aria-label={open ? 'Close menu' : 'Open menu'} aria-expanded={open} onClick={() => setOpen((o) => !o)} className="icon-btn md:hidden">
             {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
@@ -106,6 +115,11 @@ export default function Navbar() {
             <Link to="/studio" className="btn-primary mt-3 w-full !min-h-[52px] text-base">
               Open Creative Studio
             </Link>
+            {authStatus === 'guest' && (
+              <Link to="/signin" className="btn-secondary mt-2 w-full !min-h-[52px] text-base">
+                Sign in
+              </Link>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
