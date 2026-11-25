@@ -76,6 +76,10 @@ npm run dev                   # http://localhost:5173
 ```
 
 Open http://localhost:5173 and click **Open Studio**, which takes you to the sign-in page. Without SMTP configured, the 6-digit code appears in the **API terminal**.
+#test user
+gmail=adminwebsite23@gmail.com
+pass=Admin@123
+GOOGLE_CLIENT_ID=565350766558-pviur3t2jvbe9dmrjg14uuodsrm3ic53.apps.googleusercontent.com
 
 Health check: `curl http://localhost:8000/api/health`. It reports the database, ffmpeg, the AI provider, the transcriber and the sign-in methods. Interactive API docs are at http://localhost:8000/api/docs.
 
