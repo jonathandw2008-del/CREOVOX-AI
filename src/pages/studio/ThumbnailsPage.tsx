@@ -368,7 +368,7 @@ function Thumbnails({ project }: { project: Project }) {
           </div>
         </div>
         <Notice>
-          Thumbnails are composed on a canvas — the PNG you download matches the preview pixel for pixel. {canSuggest ? 'AI suggest picks strong frames from your highlights and writes the headline; ' : ''}No
+          Thumbnails are composed on a canvas — the PNG you download matches the preview pixel for pixel. {canSuggest ? 'AI suggest picks strong frames from your highlights and writes the headline. ' : ''}No
           image-generation AI is used, so every background is a real frame or your own image.
         </Notice>
       </Panel>

@@ -26,7 +26,7 @@ export const DEFAULT_SUBTITLE_STYLE: SubtitleStyle = {
 }
 
 export const DEFAULT_EXPORT_CONFIG: ExportConfig = {
-  format: 'webm',
+  format: 'mp4',
   resolution: '720p',
   aspectRatio: '16:9',
   includeSubtitles: true,
